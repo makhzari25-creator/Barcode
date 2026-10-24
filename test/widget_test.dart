@@ -57,9 +57,18 @@ void main() {
     final settings = context.read<SettingsState>();
     expect(settings.soundEnabled, isTrue);
 
-    await tester.tap(find.text('صدای تایید و رد'));
+    // تپ روی خود Switch (قابل‌اعتمادتر از تپ روی متن در RTL + ListView)
+    final soundSwitch = find.byType(Switch).first;
+    await tester.ensureVisible(soundSwitch);
+    await tester.tap(soundSwitch);
+    await tester.pump();
     await tester.pumpAndSettle();
+
     expect(settings.soundEnabled, isFalse);
+
+    // تأیید ذخیره در SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getBool('settings_sound'), isFalse);
   });
 
   testWidgets('هدر پیشرفت اعداد فارسی و درصد را نشان می‌دهد', (tester) async {
