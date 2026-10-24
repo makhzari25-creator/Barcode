@@ -5,13 +5,24 @@ class Product {
   final String title;
   final int requiredCount;
 
+  /// مسیر فایل روی گوشی یا آدرس اینترنتی عکس کالا (اختیاری)
+  final String imageUrl;
+
   Product({
     required this.code,
     required this.title,
     required this.requiredCount,
+    this.imageUrl = '',
   });
 
   factory Product.empty() => Product(code: '', title: '', requiredCount: 0);
+
+  Product copyWith({int? requiredCount}) => Product(
+        code: code,
+        title: title,
+        requiredCount: requiredCount ?? this.requiredCount,
+        imageUrl: imageUrl,
+      );
 
   bool get isEmpty => code.isEmpty && title.isEmpty;
 
@@ -19,12 +30,14 @@ class Product {
         'code': code,
         'title': title,
         'requiredCount': requiredCount,
+        'imageUrl': imageUrl,
       };
 
   factory Product.fromJson(Map<String, dynamic> json) => Product(
         code: json['code'] as String? ?? '',
         title: json['title'] as String? ?? '',
-        requiredCount: json['requiredCount'] as int? ?? 0,
+        requiredCount: (json['requiredCount'] as num?)?.toInt() ?? 0,
+        imageUrl: json['imageUrl'] as String? ?? '',
       );
 }
 

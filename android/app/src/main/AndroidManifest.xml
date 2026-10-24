@@ -1,8 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- فقط برای نمایش عکس کالا از آدرس اینترنتی (ستون اختیاری «عکس»)؛ بقیه برنامه آفلاین است -->
+    <uses-permission android:name="android.permission.INTERNET" />
     <!-- پرمیشن دوربین برای اسکن بارکد -->
     <uses-permission android:name="android.permission.CAMERA" />
-    <!-- برای اجرای کامل در برخی دستگاه‌ها -->
-    <uses-permission android:name="android.permission.FLASHLIGHT" />
     <!-- پرمیشن میکروفن برای ورود صوتی بارکد -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-feature android:name="android.hardware.camera" android:required="true" />

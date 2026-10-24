@@ -1,11 +1,19 @@
-import 'dart:async';
-import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:vibration/vibration.dart';
+import '../models/product.dart';
 import '../services/hall_charge_state.dart';
-import '../services/sound_service.dart';
+import '../theme/app_colors.dart';
+import '../utils/barcode_utils.dart';
+import '../widgets/dialogs.dart';
+import '../widgets/file_widgets.dart';
+import '../widgets/manual_entry_dialog.dart';
+import '../widgets/product_status_row.dart';
+import '../widgets/progress_header.dart';
+import '../widgets/scan_actions.dart';
+import '../widgets/scan_result_card.dart';
+import '../widgets/scanner_host.dart';
+import '../widgets/scanner_panel.dart';
 
 /// صفحه‌ی «شارژ سالن»
 /// یک فایل اکسل با ستون‌های «کد محصول» و «عنوان محصول» بارگذاری می‌شود و
@@ -17,37 +25,21 @@ class ChargeHallScreen extends StatefulWidget {
   State<ChargeHallScreen> createState() => _ChargeHallScreenState();
 }
 
-class _ChargeHallScreenState extends State<ChargeHallScreen> {
-  MobileScannerController? _scannerController;
-  bool _scannerReady = false;
-  bool _isProcessing = false;
-  bool _torchOn = false;
-  final SoundService _soundService = SoundService();
+class _ChargeHallScreenState extends State<ChargeHallScreen>
+    with ScannerHost<ChargeHallScreen> {
+  static const _accent = AppColors.hall;
+
+  ScanFeedback? _feedback;
+  String _query = '';
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted && context.read<HallChargeState>().hasFile) {
-        _initScanner();
+        initScanner();
       }
     });
-  }
-
-  void _initScanner() {
-    _scannerController = MobileScannerController(
-      detectionSpeed: DetectionSpeed.noDuplicates,
-      facing: CameraFacing.back,
-      torchEnabled: false,
-    );
-    setState(() => _scannerReady = true);
-  }
-
-  @override
-  void dispose() {
-    _scannerController?.dispose();
-    _soundService.dispose();
-    super.dispose();
   }
 
   Future<void> _pickExcelFile() async {
@@ -66,286 +58,130 @@ class _ChargeHallScreenState extends State<ChargeHallScreen> {
       final ok = await state.loadExcelFile(path, fileName: file.name);
       if (!mounted) return;
       if (ok) {
-        _showSnack('فایل با موفقیت بارگذاری شد (${state.products.length} کالا).',
-            color: const Color(0xFF43A047));
-        _initScanner();
+        showAppSnack(
+          context,
+          'فایل با موفقیت بارگذاری شد (${toFaDigits(state.products.length)} کالا).',
+          kind: SnackKind.success,
+        );
+        setState(() {
+          _feedback = null;
+          _query = '';
+          scanPaused = false;
+        });
+        if (scannerController == null) {
+          initScanner();
+        } else {
+          await resumeScanner();
+        }
       } else {
-        _showSnack(state.error ?? 'بارگذاری فایل ناموفق بود.', color: Colors.red);
+        showAppSnack(context, state.error ?? 'بارگذاری فایل ناموفق بود.',
+            kind: SnackKind.error);
       }
     } catch (e) {
       if (!mounted) return;
-      _showSnack('خطا در انتخاب فایل: $e', color: Colors.red);
+      showAppSnack(context, 'خطا در انتخاب فایل: $e', kind: SnackKind.error);
     }
   }
 
-  Future<void> _onDetect(BarcodeCapture capture) async {
-    if (_isProcessing) return;
-    final barcodes = capture.barcodes;
-    if (barcodes.isEmpty) return;
-    final code = barcodes.first.rawValue ?? '';
-    if (code.isEmpty) return;
-    await _processCode(code);
-  }
+  @override
+  Future<void> handleCode(String code) async {
+    final state = context.read<HallChargeState>();
+    final wasComplete = state.isFullyComplete;
+    final result = await state.recordScan(code);
+    final product = state.findProduct(code);
+    await giveFeedback(ok: result != HallScanResult.notFound);
+    if (!mounted) return;
 
-  Future<void> _processCode(String code) async {
-    if (_isProcessing) return;
-    _isProcessing = true;
+    setState(() {
+      _feedback = switch (result) {
+        HallScanResult.notFound => ScanFeedback(
+            kind: FeedbackKind.error,
+            title: 'این کالا در لیست شارژ سالن نیست',
+            code: normalizeCode(code),
+          ),
+        HallScanResult.confirmed => ScanFeedback(
+            kind: FeedbackKind.success,
+            title: 'کالا در لیست شارژ سالن است',
+            code: normalizeCode(code),
+            product: product,
+            badge: 'کد کالا تایید شد',
+          ),
+        HallScanResult.alreadyConfirmed => ScanFeedback(
+            kind: FeedbackKind.info,
+            title: 'این کالا قبلاً تایید شده بود',
+            code: normalizeCode(code),
+            product: product,
+            badge: 'قبلاً تایید شده است',
+          ),
+      };
+    });
 
-    try {
-      await _scannerController?.stop();
-    } catch (_) {}
-
-    try {
-      final state = context.read<HallChargeState>();
-      final wasComplete = state.isFullyComplete;
-      final result = await state.recordScan(code);
-
-      if (result == HallScanResult.notFound) {
-        unawaited(_soundService.playError());
-      } else {
-        unawaited(_soundService.playSuccess());
-      }
-      try {
-        await Vibration.vibrate(duration: 80);
-      } catch (_) {}
-
-      if (!mounted) return;
-      await _showResultDialog(code, result, state);
-
-      if (!wasComplete && state.isFullyComplete) {
-        if (!mounted) return;
-        await _showAllCompleteDialog();
-      }
-    } finally {
-      if (mounted && _scannerController != null) {
-        try {
-          await _scannerController!.start();
-        } catch (_) {}
-      }
-      _isProcessing = false;
+    if (!wasComplete && state.isFullyComplete) {
+      await showCompleteDialog(
+        context,
+        message: 'همه کالاهای شارژ سالن تایید شدند.',
+      );
     }
   }
 
-  Future<void> _showManualEntryDialog() async {
-    final controller = TextEditingController();
-    try {
-      await _scannerController?.stop();
-    } catch (_) {}
-
-    final entered = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('ورود دستی بارکد'),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          textDirection: TextDirection.ltr,
-          textAlign: TextAlign.left,
-          decoration: const InputDecoration(
-            hintText: 'کد بارکد را وارد کنید',
-            border: OutlineInputBorder(),
-          ),
-          onSubmitted: (v) => Navigator.of(ctx).pop(v),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('انصراف'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.of(ctx).pop(controller.text),
-            child: const Text('ثبت'),
-          ),
-        ],
-      ),
-    );
-
-    final code = entered?.trim() ?? '';
-    if (code.isEmpty) {
-      if (mounted && _scannerController != null) {
-        try {
-          await _scannerController!.start();
-        } catch (_) {}
-      }
+  Future<void> _manualEntry() async {
+    final wasPaused = scanPaused;
+    await pauseScanner();
+    if (!mounted) return;
+    final code = await showManualEntryDialog(context);
+    if (!mounted) return;
+    if (code == null || normalizeCode(code).isEmpty) {
+      if (!wasPaused) await resumeScanner();
       return;
     }
-    await _processCode(code);
+    await processCode(code);
   }
 
-  Future<void> _showResultDialog(
-    String code,
-    HallScanResult result,
-    HallChargeState state,
-  ) async {
-    final product = state.findProduct(code);
-
-    String title;
-    String message;
-    Color color;
-    IconData icon;
-
-    switch (result) {
-      case HallScanResult.notFound:
-        title = 'این کد در لیست شارژ سالن نیست';
-        message = 'کد: $code';
-        color = const Color(0xFFE53935);
-        icon = Icons.error_outline_rounded;
-        break;
-      case HallScanResult.confirmed:
-        title = 'تطبیق تایید شد';
-        message = 'کد: ${product?.code ?? code}\nنام کالا: ${product?.title ?? ""}';
-        color = const Color(0xFF43A047);
-        icon = Icons.check_circle_outline_rounded;
-        break;
-      case HallScanResult.alreadyConfirmed:
-        title = 'قبلاً تایید شده بود';
-        message = 'کد: ${product?.code ?? code}\nنام کالا: ${product?.title ?? ""}';
-        color = const Color(0xFF1565C0);
-        icon = Icons.info_outline_rounded;
-        break;
-    }
-
+  Future<void> _confirmReset() async {
+    final ok = await confirmDialog(
+      context,
+      title: 'ریست تاییدها',
+      message: 'همه‌ی تاییدها پاک می‌شود؛ لیست کالاها باقی می‌ماند.',
+      confirmLabel: 'ریست',
+      destructive: true,
+    );
+    if (!ok || !mounted) return;
+    await context.read<HallChargeState>().resetConfirmations();
     if (!mounted) return;
-    await showDialog(
-      context: context,
-      barrierDismissible: true,
-      builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        contentPadding: const EdgeInsets.all(24),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 84,
-              height: 84,
-              decoration: BoxDecoration(
-                color: color.withOpacity(0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, color: color, size: 52),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 20, fontWeight: FontWeight.w900, color: color),
-            ),
-            const SizedBox(height: 10),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 16, color: Colors.black87, height: 1.6),
-            ),
-          ],
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => Navigator.of(dialogCtx).pop(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: color,
-                foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(54),
-              ),
-              child: const Text('ادامه اسکن'),
-            ),
-          ),
-        ],
-      ),
-    );
+    setState(() => _feedback = null);
+    showAppSnack(context, 'تاییدها ریست شدند.', kind: SnackKind.success);
   }
 
-  Future<void> _showAllCompleteDialog() async {
-    await showDialog(
-      context: context,
-      builder: (dialogCtx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        contentPadding: const EdgeInsets.all(28),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 110,
-              height: 110,
-              decoration: BoxDecoration(
-                color: const Color(0xFF43A047).withOpacity(0.15),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.celebration_rounded,
-                  color: Color(0xFF43A047), size: 68),
-            ),
-            const SizedBox(height: 20),
-            const Text(
-              'تکمیل شد!',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                  fontSize: 30, fontWeight: FontWeight.w900, color: Color(0xFF43A047)),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'همه کالاهای شارژ سالن تایید شدند.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 16, color: Colors.black87, height: 1.6),
-            ),
-          ],
-        ),
-        actionsAlignment: MainAxisAlignment.center,
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () => Navigator.of(dialogCtx).pop(),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF43A047),
-                foregroundColor: Colors.white,
-                minimumSize: const Size.fromHeight(54),
-              ),
-              child: const Text('باشه'),
-            ),
-          ),
-        ],
-      ),
+  Future<void> _confirmReplace() async {
+    final ok = await confirmDialog(
+      context,
+      title: 'جایگزینی فایل اکسل',
+      message:
+          'اگر کالایی تایید شده باشد، فایل فعلی با تاییدهایش به «بایگانی» می‌رود و فایل جدید از صفر شروع می‌شود.',
+      confirmLabel: 'انتخاب فایل',
     );
+    if (ok && mounted) await _pickExcelFile();
   }
 
-  void _showSnack(String message, {Color color = Colors.black87}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message, style: const TextStyle(color: Colors.white)),
-        backgroundColor: color,
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
-  Future<void> _showResetDialog() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('ریست تاییدها'),
-        content: const Text('همه‌ی تاییدها صفر می‌شود؛ لیست کالاها باقی می‌ماند.'),
-        actions: [
-          TextButton(
-              onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('انصراف')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red, foregroundColor: Colors.white),
-            child: const Text('ریست'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      await context.read<HallChargeState>().resetConfirmations();
-      _showSnack('تاییدها ریست شدند.', color: const Color(0xFF43A047));
+  List<Product> _visibleProducts(HallChargeState state) {
+    final q = toEnDigits(_query.trim().toLowerCase());
+    final entries = <(int, Product)>[];
+    for (var i = 0; i < state.products.length; i++) {
+      final p = state.products[i];
+      if (q.isEmpty ||
+          p.title.toLowerCase().contains(q) ||
+          p.code.contains(q)) {
+        entries.add((i, p));
+      }
     }
+    // کالاهای تاییدنشده اول می‌آیند تا کار باقی‌مانده دیده شود
+    entries.sort((a, b) {
+      final ca = state.isConfirmed(a.$2.code) ? 1 : 0;
+      final cb = state.isConfirmed(b.$2.code) ? 1 : 0;
+      final r = ca.compareTo(cb);
+      return r != 0 ? r : a.$1.compareTo(b.$1);
+    });
+    return entries.map((e) => e.$2).toList();
   }
 
   @override
@@ -362,226 +198,147 @@ class _ChargeHallScreenState extends State<ChargeHallScreen> {
     if (!state.hasFile) {
       return Scaffold(
         appBar: AppBar(title: const Text('شارژ سالن')),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(32),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: 130,
-                  height: 130,
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFFFF3E0),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.inventory_2_rounded,
-                      size: 70, color: Color(0xFFFF9800)),
-                ),
-                const SizedBox(height: 32),
-                const Text(
-                  'فایل اکسل شارژ سالن را انتخاب کنید',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'فقط ستون‌های «کد محصول» و «عنوان محصول» لازم است.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 15, color: Colors.black54),
-                ),
-                const SizedBox(height: 40),
-                SizedBox(
-                  width: double.infinity,
-                  height: 70,
-                  child: ElevatedButton.icon(
-                    onPressed: _pickExcelFile,
-                    icon: const Icon(Icons.file_upload_rounded, size: 30),
-                    label: const Text('انتخاب فایل اکسل'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFFFF9800),
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+        body: EmptyFileState(
+          title: 'فایل اکسل شارژ سالن را انتخاب کنید',
+          hint: 'با اسکن هر کالا، تطابق کد و نام محصول تایید می‌شود.',
+          color: _accent,
+          showCountColumn: false,
+          onPick: _pickExcelFile,
         ),
       );
     }
+
+    final products = _visibleProducts(state);
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('شارژ سالن'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.keyboard_alt_rounded),
-            tooltip: 'ورود دستی بارکد',
-            onPressed: _showManualEntryDialog,
-          ),
-          IconButton(
-            icon: Icon(_torchOn ? Icons.flash_on_rounded : Icons.flash_off_rounded),
-            tooltip: 'فلش',
-            onPressed: () {
-              _scannerController?.toggleTorch();
-              setState(() => _torchOn = !_torchOn);
+          PopupMenuButton<String>(
+            tooltip: 'گزینه‌ها',
+            onSelected: (v) {
+              switch (v) {
+                case 'archive':
+                  Navigator.of(context).pushNamed('/archive', arguments: 1);
+                case 'reset':
+                  _confirmReset();
+                case 'replace':
+                  _confirmReplace();
+              }
             },
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh_rounded),
-            tooltip: 'ریست تاییدها',
-            onPressed: _showResetDialog,
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'archive', child: Text('بایگانی')),
+              PopupMenuItem(value: 'reset', child: Text('ریست تاییدها')),
+              PopupMenuItem(value: 'replace', child: Text('جایگزینی فایل اکسل')),
+            ],
           ),
         ],
       ),
-      body: Column(
-        children: [
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            color: const Color(0xFFFF9800).withOpacity(0.10),
-            child: Row(
-              children: [
-                const Icon(Icons.table_chart_rounded,
-                    color: Color(0xFFFF9800), size: 22),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    state.fileName ?? '',
-                    style: const TextStyle(
-                        fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFFFF9800)),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+      body: CustomScrollView(
+        slivers: [
+          SliverPadding(
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                FileCard(
+                  fileName: state.fileName ?? '',
+                  productCount: state.products.length,
+                  onTap: _confirmReplace,
                 ),
-                Text('${state.confirmedCount}/${state.products.length} تایید‌شده',
-                    style: const TextStyle(fontSize: 13, color: Colors.black54)),
-              ],
+                const SizedBox(height: 10),
+                ProgressHeader(
+                  done: state.confirmedCount,
+                  total: state.products.length,
+                  progress: state.progress,
+                  color: _accent,
+                  doneLabel: 'کالا تایید شده',
+                ),
+                const SizedBox(height: 12),
+                ScannerPanel(
+                  controller: scannerController,
+                  ready: scannerReady,
+                  paused: scanPaused,
+                  onDetect: onDetect,
+                  onResume: resumeScanner,
+                ),
+                const SizedBox(height: 12),
+                ScanResultCard(
+                  feedback: _feedback,
+                  accent: _accent,
+                  onNext: scanPaused ? resumeScanner : null,
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ScanActionButton(
+                      icon: torchOn
+                          ? Icons.flashlight_on_rounded
+                          : Icons.flashlight_off_rounded,
+                      label: 'چراغ قوه',
+                      active: torchOn,
+                      color: _accent,
+                      onTap: toggleTorch,
+                    ),
+                    ScanActionButton(
+                      icon: Icons.keyboard_alt_outlined,
+                      label: 'ورود دستی',
+                      color: _accent,
+                      onTap: _manualEntry,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Text('وضعیت کالاها',
+                        style: TextStyle(
+                            fontSize: 16, fontWeight: FontWeight.w700)),
+                    const Spacer(),
+                    Text('${toFaDigits(products.length)} کالا',
+                        style: const TextStyle(
+                            fontSize: 12.5, color: AppColors.textMuted)),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ProductSearchField(
+                  onChanged: (v) => setState(() => _query = v),
+                ),
+                const SizedBox(height: 12),
+              ]),
             ),
           ),
-          Expanded(
-            flex: 3,
-            child: Stack(
-              children: [
-                if (_scannerReady && _scannerController != null)
-                  MobileScanner(
-                    controller: _scannerController!,
-                    onDetect: _onDetect,
-                  )
-                else
-                  Container(color: Colors.black),
-                Center(
-                  child: Container(
-                    width: 240,
-                    height: 150,
-                    decoration: BoxDecoration(
-                      border: Border.all(color: const Color(0xFFFF9800), width: 3),
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
+          if (products.isEmpty)
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Center(
+                  child: Text('کالایی با این مشخصات پیدا نشد.',
+                      style: TextStyle(color: AppColors.textMuted)),
                 ),
-                Positioned(
-                  bottom: 16,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: const Text(
-                        'بارکد را داخل قاب قرار دهید',
-                        style: TextStyle(color: Colors.white, fontSize: 14),
-                      ),
-                    ),
-                  ),
+              ),
+            )
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) {
+                    final p = products[i];
+                    return ProductStatusRow(
+                      product: p,
+                      scanned: state.isConfirmed(p.code) ? 1 : 0,
+                      required: 1,
+                      color: _accent,
+                      showCounts: false,
+                    );
+                  },
+                  childCount: products.length,
                 ),
-                if (state.isFullyComplete)
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
-                      color: const Color(0xFF43A047),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.verified_rounded, color: Colors.white, size: 26),
-                          SizedBox(width: 8),
-                          Text('تکمیل شد',
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900)),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-          Expanded(
-            flex: 2,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text('وضعیت کالاها',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 8),
-                  Expanded(child: _HallProductList(state: state)),
-                ],
               ),
             ),
-          ),
         ],
       ),
-    );
-  }
-}
-
-class _HallProductList extends StatelessWidget {
-  final HallChargeState state;
-  const _HallProductList({required this.state});
-
-  @override
-  Widget build(BuildContext context) {
-    final sorted = [...state.products]..sort((a, b) {
-        final ca = state.isConfirmed(a.code);
-        final cb = state.isConfirmed(b.code);
-        if (ca == cb) return 0;
-        return ca ? -1 : 1;
-      });
-
-    if (sorted.isEmpty) {
-      return const Center(child: Text('کالایی وجود ندارد.'));
-    }
-
-    return ListView.separated(
-      itemCount: sorted.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
-      itemBuilder: (context, i) {
-        final p = sorted[i];
-        final confirmed = state.isConfirmed(p.code);
-        return ListTile(
-          dense: true,
-          leading: Icon(
-            confirmed ? Icons.verified_rounded : Icons.radio_button_unchecked_rounded,
-            color: confirmed ? const Color(0xFF43A047) : Colors.grey,
-          ),
-          title: Text(p.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text('کد: ${p.code}', style: const TextStyle(fontSize: 12)),
-          trailing: confirmed
-              ? const Icon(Icons.check_circle_rounded, color: Color(0xFF43A047))
-              : null,
-        );
-      },
     );
   }
 }
