@@ -146,14 +146,19 @@ class _Card extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
-      ),
+    // Material لازم است تا ListTile / SwitchListTile بتوانند ink splash بکشند
+    // و در تست‌های widget assertion «background color may be invisible» ندهند.
+    return Material(
+      color: AppColors.surface,
+      borderRadius: BorderRadius.circular(16),
       clipBehavior: Clip.antiAlias,
-      child: Column(children: children),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: Column(children: children),
+      ),
     );
   }
 }
