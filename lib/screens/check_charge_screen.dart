@@ -222,6 +222,7 @@ class _CheckChargeScreenState extends State<CheckChargeScreen>
       );
     }
 
+    ensureScanner(hasFile: state.hasFile);
     final products = _visibleProducts(state);
 
     return Scaffold(

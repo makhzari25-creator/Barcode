@@ -208,6 +208,7 @@ class _ChargeHallScreenState extends State<ChargeHallScreen>
       );
     }
 
+    ensureScanner(hasFile: state.hasFile);
     final products = _visibleProducts(state);
 
     return Scaffold(

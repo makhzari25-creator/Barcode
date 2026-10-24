@@ -38,6 +38,16 @@ mixin ScannerHost<T extends StatefulWidget> on State<T> {
     setState(() => scannerReady = true);
   }
 
+  /// اگر فایل بعد از باز شدن صفحه بارگذاری شد (مثلاً داده‌ی ذخیره‌شده دیر
+  /// خوانده شد)، اسکنر هم باید ساخته شود؛ در غیر این صورت قاب دوربین همیشه
+  /// در حال بارگذاری می‌ماند. این تابع را در build صدا بزنید.
+  void ensureScanner({required bool hasFile}) {
+    if (!hasFile || scannerController != null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && scannerController == null) initScanner();
+    });
+  }
+
   Future<void> toggleTorch() async {
     try {
       await scannerController?.toggleTorch();
