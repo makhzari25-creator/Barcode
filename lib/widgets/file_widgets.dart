@@ -175,11 +175,9 @@ class EmptyFileState extends StatelessWidget {
               const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
-                child: OutlinedButton.icon(
+                child: FilledButton.tonalIcon(
                   onPressed: onPaper,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: color,
-                    side: BorderSide(color: color),
+                  style: FilledButton.styleFrom(
                     minimumSize: const Size(0, 56),
                   ),
                   icon: const Icon(Icons.document_scanner_rounded),
