@@ -213,7 +213,16 @@ class _ChargeHallScreenState extends State<ChargeHallScreen>
 
     if (state.loading && !state.hasFile) {
       return Scaffold(
-        appBar: AppBar(title: const Text('شارژ سالن')),
+        appBar: AppBar(
+          title: const Text('شارژ سالن'),
+          actions: [
+            IconButton(
+              tooltip: 'ورود از عکس کاغذ',
+              onPressed: _importPaper,
+              icon: const Icon(Icons.document_scanner_rounded),
+            ),
+          ],
+        ),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -239,6 +248,11 @@ class _ChargeHallScreenState extends State<ChargeHallScreen>
       appBar: AppBar(
         title: const Text('شارژ سالن'),
         actions: [
+          IconButton(
+            tooltip: 'ورود از عکس کاغذ',
+            onPressed: _importPaper,
+            icon: const Icon(Icons.document_scanner_rounded),
+          ),
           PopupMenuButton<String>(
             tooltip: 'گزینه‌ها',
             onSelected: (v) {

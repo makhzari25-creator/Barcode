@@ -227,7 +227,16 @@ class _CheckChargeScreenState extends State<CheckChargeScreen>
 
     if (state.loading && !state.hasFile) {
       return Scaffold(
-        appBar: AppBar(title: const Text('چک کردن شارژ')),
+        appBar: AppBar(
+          title: const Text('چک کردن شارژ'),
+          actions: [
+            IconButton(
+              tooltip: 'ورود از عکس کاغذ',
+              onPressed: _importPaper,
+              icon: const Icon(Icons.document_scanner_rounded),
+            ),
+          ],
+        ),
         body: const Center(child: CircularProgressIndicator()),
       );
     }
@@ -267,6 +276,11 @@ class _CheckChargeScreenState extends State<CheckChargeScreen>
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'ورود از عکس کاغذ',
+            onPressed: _importPaper,
+            icon: const Icon(Icons.document_scanner_rounded),
+          ),
           PopupMenuButton<String>(
             tooltip: 'گزینه‌ها',
             onSelected: (v) {
