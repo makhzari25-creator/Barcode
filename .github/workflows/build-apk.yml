@@ -3,7 +3,9 @@ name: Build Flutter APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main, fix/light-redesign ]
+    branches:
+      - main
+      - fix/light-redesign
   pull_request:
 
 jobs:
@@ -11,7 +13,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -20,49 +21,29 @@ jobs:
 
       - name: Restore excel_service if broken
         run: |
-          set -e
           if grep -q ZipDecoder lib/services/excel_service.dart; then
-            echo "excel_service.dart OK"
-            exit 0
+            echo excel_ok
+          else
+            echo restoring
+            git show 9caccedab52c42dac63ec0ce0af400d55bb47a00:lib/services/excel_service.dart > lib/services/excel_service.dart
+            git config user.name github-actions
+            git config user.email github-actions@github.com
+            git add lib/services/excel_service.dart
+            git commit -m "fix: restore excel_service.dart" || true
+            git push || true
           fi
-          echo "Restoring excel_service.dart from 9cacceda..."
-          git show 9caccedab52c42dac63ec0ce0af400d55bb47a00:lib/services/excel_service.dart > lib/services/excel_service.dart
-          if ! grep -q extractHallLoc lib/services/excel_service.dart; then
-            python3 -c "
-          from pathlib import Path
-          p = Path('lib/services/excel_service.dart')
-          t = p.read_text()
-          h = '''  static String extractHallLoc(String raw) {
-      final en = toEnDigits(raw);
-      final m = RegExp(r'\\)?\\s*([0-9]{3})').firstMatch(en);
-      if (m != null) return m.group(1)!;
-      final digits = en.replaceAll(RegExp(r'[^0-9]'), '');
-      if (digits.length >= 3) return digits.substring(0, 3);
-      return digits;
-    }\n\n'''
-          t = t.replace('  String _normalizeHeader(String s) {', h + '  String _normalizeHeader(String s) {')
-          p.write_text(t)
-          print('added extractHallLoc')
-          "
-          fi
-          grep -q ZipDecoder lib/services/excel_service.dart
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/services/excel_service.dart
-          git commit -m 'fix: restore complete excel_service.dart (CI auto-repair)' || echo 'nothing to commit'
-          git push origin HEAD:${GITHUB_REF_NAME} || git push origin HEAD:fix/light-redesign || true
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: temurin
+          java-version: "17"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.47.8'
-          channel: 'stable'
+          flutter-version: "3.47.8"
+          channel: stable
           cache: true
 
       - name: Install dependencies
