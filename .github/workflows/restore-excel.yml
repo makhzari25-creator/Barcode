@@ -1,0 +1,34 @@
+name: Restore excel_service
+
+on:
+  workflow_dispatch:
+
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/light-redesign
+          fetch-depth: 0
+      - name: Restore excel_service from known good commit
+        run: |
+          git checkout 9caccedab52c42dac63ec0ce0af400d55bb47a00 -- lib/services/excel_service.dart
+          # Append extractHallLoc if missing
+          if ! grep -q extractHallLoc lib/services/excel_service.dart; then
+            python3 << 'PY'
+          from pathlib import Path
+          p = Path('lib/services/excel_service.dart')
+          t = p.read_text()
+          helper = '''\n  static String extractHallLoc(String raw) {\n    // digits only first 3 after optional paren\n    final buf = StringBuffer();\n    for (final r in raw.runes) {\n      final c = String.fromCharCode(r);\n      if (c.compareTo('0') >= 0 && c.compareTo('9') <= 0) buf.write(c);\n      else if (c.compareTo('\u06f0') >= 0 && c.compareTo('\u06f9') <= 0) {\n        buf.write(String.fromCharCode(r - 0x06f0 + 0x30));\n      }\n    }\n    final d = buf.toString();\n    return d.length >= 3 ? d.substring(0, 3) : d;\n  }\n'''
+          t = t.replace('  String _normalizeHeader(String s) {', helper + '  String _normalizeHeader(String s) {')
+          p.write_text(t)
+          PY
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add lib/services/excel_service.dart
+          git commit -m 'fix: restore full excel_service + extractHallLoc' || echo 'no change'
+          git push origin fix/light-redesign
