@@ -2,147 +2,205 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../models/product.dart';
 import '../services/app_state.dart';
+import '../services/hall_charge_state.dart';
+import '../theme/app_colors.dart';
+import '../utils/barcode_utils.dart';
+import '../widgets/dialogs.dart';
 
 /// صفحه‌ی بایگانی: فایل‌های اکسل قبلی به‌همراه نتیجه‌ی نهایی اسکن‌هایشان
+/// دو زبانه دارد: «چک کردن شارژ» و «شارژ سالن».
 /// این صفحه فقط نمایشی است؛ داده‌ای در آن ویرایش نمی‌شود (به‌جز حذف بایگانی)
 class ArchiveScreen extends StatelessWidget {
   const ArchiveScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    final archives = state.archives;
+    final args = ModalRoute.of(context)?.settings.arguments;
+    final initial = args is int && (args == 0 || args == 1) ? args : 0;
+    final check = context.watch<AppState>();
+    final hall = context.watch<HallChargeState>();
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('بایگانی'),
-        actions: [
-          if (archives.isNotEmpty)
-            IconButton(
-              icon: const Icon(Icons.delete_sweep_rounded),
-              tooltip: 'خالی کردن بایگانی',
-              onPressed: () => _confirmClearAll(context),
+    return DefaultTabController(
+      length: 2,
+      initialIndex: initial,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('بایگانی'),
+          bottom: const TabBar(
+            labelColor: AppColors.primaryDark,
+            unselectedLabelColor: AppColors.textMuted,
+            indicatorColor: AppColors.primary,
+            labelStyle:
+                TextStyle(fontFamily: 'Vazirmatn', fontWeight: FontWeight.w700),
+            unselectedLabelStyle: TextStyle(fontFamily: 'Vazirmatn'),
+            tabs: [
+              Tab(text: 'چک کردن شارژ'),
+              Tab(text: 'شارژ سالن'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _ArchiveList(
+              sessions: check.archives,
+              unit: 'اسکن',
+              color: AppColors.primary,
+              onDelete: check.deleteArchive,
+              onClear: check.clearArchives,
             ),
-        ],
+            _ArchiveList(
+              sessions: hall.archives,
+              unit: 'تایید',
+              color: AppColors.hall,
+              onDelete: hall.deleteArchive,
+              onClear: hall.clearArchives,
+            ),
+          ],
+        ),
       ),
-      body: archives.isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.archive_outlined,
-                        size: 84, color: Colors.grey[400]),
-                    const SizedBox(height: 20),
-                    const Text(
-                      'هنوز هیچ فایلی بایگانی نشده است',
-                      style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'وقتی فایل اکسل جدیدی جایگزین فایل فعلی شود، '
-                      'فایل قبلی همراه نتیجه‌ی اسکن‌هایش این‌جا نگه داشته می‌شود.',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : ListView.separated(
-              padding: const EdgeInsets.all(12),
-              itemCount: archives.length,
-              separatorBuilder: (_, __) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final session = archives[index];
-                return _ArchiveCard(
-                  session: session,
-                  onDelete: () => _confirmDeleteOne(context, index),
-                );
-              },
-            ),
     );
   }
+}
+
+class _ArchiveList extends StatelessWidget {
+  final List<ArchivedSession> sessions;
+  final String unit;
+  final Color color;
+  final Future<void> Function(int index) onDelete;
+  final Future<void> Function() onClear;
+
+  const _ArchiveList({
+    required this.sessions,
+    required this.unit,
+    required this.color,
+    required this.onDelete,
+    required this.onClear,
+  });
 
   Future<void> _confirmDeleteOne(BuildContext context, int index) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('حذف از بایگانی'),
-        content: const Text('این مورد برای همیشه حذف می‌شود. ادامه می‌دهید؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('انصراف'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red, foregroundColor: Colors.white),
-            child: const Text('حذف'),
-          ),
-        ],
-      ),
+    final ok = await confirmDialog(
+      context,
+      title: 'حذف از بایگانی',
+      message: 'این مورد برای همیشه حذف می‌شود. ادامه می‌دهید؟',
+      confirmLabel: 'حذف',
+      destructive: true,
     );
-    if (confirmed == true && context.mounted) {
-      await context.read<AppState>().deleteArchive(index);
-    }
+    if (ok) await onDelete(index);
   }
 
   Future<void> _confirmClearAll(BuildContext context) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('خالی کردن بایگانی'),
-        content: const Text('همه‌ی موارد بایگانی‌شده برای همیشه حذف می‌شوند. ادامه می‌دهید؟'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('انصراف'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red, foregroundColor: Colors.white),
-            child: const Text('حذف همه'),
-          ),
-        ],
-      ),
+    final ok = await confirmDialog(
+      context,
+      title: 'خالی کردن بایگانی',
+      message: 'همه‌ی موارد این بخش برای همیشه حذف می‌شوند. ادامه می‌دهید؟',
+      confirmLabel: 'حذف همه',
+      destructive: true,
     );
-    if (confirmed == true && context.mounted) {
-      await context.read<AppState>().clearArchives();
+    if (ok) await onClear();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (sessions.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 96,
+                height: 96,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.archive_outlined, size: 48, color: color),
+              ),
+              const SizedBox(height: 18),
+              const Text('هنوز موردی بایگانی نشده است',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700)),
+              const SizedBox(height: 8),
+              const Text(
+                'وقتی فایل اکسل جدیدی جایگزین فایل فعلی شود، فایل قبلی همراه نتیجه‌ی کارش این‌جا نگه داشته می‌شود.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                    fontSize: 13, color: AppColors.textMuted, height: 1.8),
+              ),
+            ],
+          ),
+        ),
+      );
     }
+
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+      itemCount: sessions.length + 1,
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Align(
+            alignment: AlignmentDirectional.centerStart,
+            child: TextButton.icon(
+              onPressed: () => _confirmClearAll(context),
+              icon: const Icon(Icons.delete_sweep_rounded, size: 20),
+              label: const Text('خالی کردن این بخش'),
+              style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+            ),
+          );
+        }
+        final i = index - 1;
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _ArchiveCard(
+            session: sessions[i],
+            unit: unit,
+            color: color,
+            onDelete: () => _confirmDeleteOne(context, i),
+          ),
+        );
+      },
+    );
   }
 }
 
 class _ArchiveCard extends StatelessWidget {
   final ArchivedSession session;
+  final String unit;
+  final Color color;
   final VoidCallback onDelete;
 
-  const _ArchiveCard({required this.session, required this.onDelete});
+  const _ArchiveCard({
+    required this.session,
+    required this.unit,
+    required this.color,
+    required this.onDelete,
+  });
 
   String _formatDate(DateTime dt) {
     String two(int n) => n.toString().padLeft(2, '0');
-    return '${dt.year}/${two(dt.month)}/${two(dt.day)} - ${two(dt.hour)}:${two(dt.minute)}';
+    return toFaDigits(
+        '${dt.year}/${two(dt.month)}/${two(dt.day)} - ${two(dt.hour)}:${two(dt.minute)}');
   }
 
   @override
   Widget build(BuildContext context) {
     final complete = session.isComplete;
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 1,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    final statusColor = complete ? AppColors.success : AppColors.warning;
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppColors.border),
+      ),
+      clipBehavior: Clip.antiAlias,
       child: ExpansionTile(
         shape: const Border(),
+        collapsedShape: const Border(),
         leading: CircleAvatar(
-          backgroundColor:
-              (complete ? const Color(0xFF43A047) : const Color(0xFFFFA726))
-                  .withOpacity(0.15),
+          backgroundColor: statusColor.withValues(alpha: 0.14),
           child: Icon(
             complete ? Icons.verified_rounded : Icons.hourglass_bottom_rounded,
-            color: complete ? const Color(0xFF43A047) : const Color(0xFFFFA726),
+            color: statusColor,
           ),
         ),
         title: Text(
@@ -151,19 +209,18 @@ class _ArchiveCard extends StatelessWidget {
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
         ),
-        subtitle: Text(
-          '${_formatDate(session.archivedAt)}  •  ${session.products.length} کالا  •  '
-          '${session.totalScanned}/${session.totalRequired} اسکن',
-          style: const TextStyle(fontSize: 12),
-        ),
-        trailing: IconButton(
-          icon: const Icon(Icons.delete_outline_rounded, color: Colors.red),
-          onPressed: onDelete,
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            '${_formatDate(session.archivedAt)}  •  ${toFaDigits(session.products.length)} کالا  •  '
+            '${toFaDigits(session.totalScanned)}/${toFaDigits(session.totalRequired)} $unit',
+            style: const TextStyle(fontSize: 12, color: AppColors.textMuted),
+          ),
         ),
         children: [
           const Divider(height: 1),
           ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 300),
+            constraints: const BoxConstraints(maxHeight: 320),
             child: ListView.separated(
               shrinkWrap: true,
               itemCount: session.products.length,
@@ -176,17 +233,34 @@ class _ArchiveCard extends StatelessWidget {
                   dense: true,
                   title: Text(p.title,
                       maxLines: 1, overflow: TextOverflow.ellipsis),
-                  subtitle: Text('کد: ${p.code}',
-                      style: const TextStyle(fontSize: 11)),
+                  subtitle: Directionality(
+                    textDirection: TextDirection.ltr,
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(p.code, style: const TextStyle(fontSize: 11)),
+                    ),
+                  ),
                   trailing: Text(
-                    '$scanned / ${p.requiredCount}',
+                    '${toFaDigits(scanned)} / ${toFaDigits(p.requiredCount)}',
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: done ? const Color(0xFF43A047) : Colors.black54,
+                      color: done ? AppColors.success : AppColors.textMuted,
                     ),
                   ),
                 );
               },
+            ),
+          ),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+              child: TextButton.icon(
+                onPressed: onDelete,
+                icon: const Icon(Icons.delete_outline_rounded, size: 20),
+                label: const Text('حذف این مورد'),
+                style: TextButton.styleFrom(foregroundColor: AppColors.danger),
+              ),
             ),
           ),
         ],

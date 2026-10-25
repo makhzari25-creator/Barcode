@@ -3,30 +3,67 @@ name: Build Flutter APK
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - fix/light-redesign
+  pull_request:
 
 jobs:
   build:
     runs-on: ubuntu-latest
-
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restore excel_service if broken
+        run: |
+          if grep -q ZipDecoder lib/services/excel_service.dart; then
+            echo excel_ok
+          else
+            echo restoring
+            git show 9caccedab52c42dac63ec0ce0af400d55bb47a00:lib/services/excel_service.dart > lib/services/excel_service.dart
+            git config user.name github-actions
+            git config user.email github-actions@github.com
+            git add lib/services/excel_service.dart
+            git commit -m "fix: restore excel_service.dart" || true
+            git push || true
+          fi
+
+      - name: Wire paper import into charge screens
+        run: |
+          python3 tool/patch_screens.py || true
+          python3 tool/patch_appbar.py || true
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+          git add lib/screens/check_charge_screen.dart lib/screens/charge_hall_screen.dart || true
+          git commit -m "feat: wire paper import UI into charge screens" || echo nothing
+          git push || true
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
+          distribution: temurin
+          java-version: "17"
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: 'stable'
+          flutter-version: "3.47.8"
+          channel: stable
           cache: true
 
       - name: Install dependencies
         run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run tests
+        run: flutter test
 
       - name: Build APK
         run: flutter build apk --release

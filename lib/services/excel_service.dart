@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:flutter/foundation.dart';
 import '../models/product.dart';
+import '../utils/barcode_utils.dart';
 
 /// سرویس خواندن فایل اکسل
 ///
@@ -33,6 +34,12 @@ class ExcelService {
     'count', 'quantity', 'qty', 'amount',
   ];
 
+  // نام‌های ممکن برای ستون اختیاری عکس (مسیر فایل یا آدرس اینترنتی)
+  static const _imageHeaders = [
+    'عکس', 'تصویر', 'عکس محصول', 'تصویر محصول', 'عکس کالا', 'لینک عکس',
+    'image', 'image url', 'photo', 'picture', 'img',
+  ];
+
   /// خواندن فایل اکسل و بازگشت لیست کالاها
   Future<List<Product>> readProducts(String filePath) async {
     try {
@@ -58,7 +65,12 @@ class ExcelService {
 
   /// خواندن فایل XLSX با استفاده از پکیج archive و parsing مستقیم XML
   Future<List<Product>> _readXlsx(String filePath) async {
-    final bytes = File(filePath).readAsBytesSync();
+    final bytes = await File(filePath).readAsBytes();
+    return readProductsFromBytes(bytes);
+  }
+
+  /// خواندن مستقیم از بایت‌های فایل xlsx (برای تست هم استفاده می‌شود)
+  List<Product> readProductsFromBytes(List<int> bytes) {
     final archive = ZipDecoder().decodeBytes(bytes);
 
     // پیدا کردن workbook.xml و sharedStrings.xml
@@ -187,10 +199,11 @@ class ExcelService {
     int? codeCol;
     int? titleCol;
     int? countCol;
+    int? imageCol;
 
     for (int r = 0; r < rows.length; r++) {
       final cells = _findChildren(rows[r], 'c');
-      int? foundCode, foundTitle, foundCount;
+      int? foundCode, foundTitle, foundCount, foundImage;
 
       for (final cell in cells) {
         final ref = cell.getAttribute('r') ?? '';
@@ -219,6 +232,12 @@ class ExcelService {
                 .contains(normalizedValue)) {
           foundCount = colIdx;
         }
+        if (foundImage == null &&
+            _imageHeaders
+                .map(_normalizeHeader)
+                .contains(normalizedValue)) {
+          foundImage = colIdx;
+        }
       }
 
       if (foundCode != null && foundTitle != null) {
@@ -226,6 +245,7 @@ class ExcelService {
         codeCol = foundCode;
         titleCol = foundTitle;
         countCol = foundCount;
+        imageCol = foundImage;
         break;
       }
     }
@@ -252,24 +272,50 @@ class ExcelService {
         cellMap[colIdx] = _getCellValue(cell, sharedStrings);
       }
 
-      final code = (cellMap[codeCol] ?? '').trim();
+      final code = normalizeCode(cellMap[codeCol] ?? '');
       final title = (cellMap[titleCol] ?? '').trim();
-      final countStr = (cellMap[countCol] ?? '').trim();
+      final countStr = toEnDigits((cellMap[countCol] ?? '').trim());
+      final image = (cellMap[imageCol] ?? '').trim();
 
       if (code.isEmpty && title.isEmpty) continue;
+      // ردیفی که کد ندارد قابل اسکن نیست
+      if (code.isEmpty) continue;
 
-      int requiredCount = 0;
+      // تعداد خالی، نامعتبر یا صفر یعنی یک عدد لازم است
+      var requiredCount = 1;
       if (countStr.isNotEmpty) {
-        requiredCount =
-            int.tryParse(countStr.replaceAll(RegExp(r'[^0-9-]'), '')) ?? 0;
+        final parsed = double.tryParse(countStr.replaceAll(',', '.'));
+        if (parsed != null && parsed >= 1) {
+          requiredCount = parsed.floor();
+        }
       }
 
       products.add(Product(
         code: code,
         title: title.isEmpty ? '-' : title,
         requiredCount: requiredCount,
+        imageUrl: image,
       ));
     }
+
+    // ادغام کدهای تکراری: تعدادها جمع می‌شود و اولین عنوان باقی می‌ماند
+    final merged = <String, Product>{};
+    for (final p in products) {
+      final existing = merged[p.code];
+      if (existing == null) {
+        merged[p.code] = p;
+      } else {
+        merged[p.code] = Product(
+          code: existing.code,
+          title: existing.title == '-' ? p.title : existing.title,
+          requiredCount: existing.requiredCount + p.requiredCount,
+          imageUrl: existing.imageUrl.isEmpty ? p.imageUrl : existing.imageUrl,
+        );
+      }
+    }
+    products
+      ..clear()
+      ..addAll(merged.values);
 
     if (products.isEmpty) {
       throw ExcelException('هیچ کالایی در فایل پیدا نشد.');

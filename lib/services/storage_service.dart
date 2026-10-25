@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/product.dart';
 
-/// سرویس ذخیره‌سازی دائمی وضعیت کالاها و شمارنده‌ها
+/// سرویس ذخیره‌سازی دائمی وضعیت کالاها، شمارنده‌ها و تنظیمات
 /// با بستن برنامه اطلاعات از بین نمی‌رود
 class StorageService {
   static const _productsKey = 'products_list';
@@ -14,6 +14,11 @@ class StorageService {
   static const _hallProductsKey = 'hall_products_list';
   static const _hallConfirmedKey = 'hall_confirmed_codes';
   static const _hallFileNameKey = 'hall_file_name';
+  static const _hallArchiveKey = 'hall_archived_sessions';
+
+  // کلیدهای تنظیمات
+  static const _soundKey = 'settings_sound';
+  static const _vibrationKey = 'settings_vibration';
 
   SharedPreferences? _prefs;
 
@@ -22,28 +27,60 @@ class StorageService {
     return _prefs!;
   }
 
-  /// ذخیره لیست کالاها (همراه با اطلاعات فایل اکسل)
-  Future<void> saveProducts(List<Product> products, {String? fileName}) async {
+  // ---------------- کمکی‌های مشترک ----------------
+
+  Future<void> _saveProducts(String key, List<Product> products) async {
     final prefs = await _getPrefs();
     final jsonList = products.map((p) => p.toJson()).toList();
-    await prefs.setString(_productsKey, jsonEncode(jsonList));
-    if (fileName != null) {
-      await prefs.setString(_excelFileNameKey, fileName);
-    }
+    await prefs.setString(key, jsonEncode(jsonList));
   }
 
-  /// بارگذاری لیست کالاها
-  Future<List<Product>> loadProducts() async {
+  Future<List<Product>> _loadProducts(String key) async {
     final prefs = await _getPrefs();
-    final str = prefs.getString(_productsKey);
+    final str = prefs.getString(key);
     if (str == null) return [];
     try {
       final list = jsonDecode(str) as List;
-      return list.map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
+      return list
+          .map((e) => Product.fromJson(e as Map<String, dynamic>))
+          .toList();
     } catch (_) {
       return [];
     }
   }
+
+  Future<void> _saveArchive(String key, List<ArchivedSession> sessions) async {
+    final prefs = await _getPrefs();
+    final jsonList = sessions.map((s) => s.toJson()).toList();
+    await prefs.setString(key, jsonEncode(jsonList));
+  }
+
+  Future<List<ArchivedSession>> _loadArchive(String key) async {
+    final prefs = await _getPrefs();
+    final str = prefs.getString(key);
+    if (str == null) return [];
+    try {
+      final list = jsonDecode(str) as List;
+      return list
+          .map((e) => ArchivedSession.fromJson(e as Map<String, dynamic>))
+          .toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // ---------------- چک کردن شارژ ----------------
+
+  /// ذخیره لیست کالاها (همراه با اطلاعات فایل اکسل)
+  Future<void> saveProducts(List<Product> products, {String? fileName}) async {
+    await _saveProducts(_productsKey, products);
+    if (fileName != null) {
+      final prefs = await _getPrefs();
+      await prefs.setString(_excelFileNameKey, fileName);
+    }
+  }
+
+  Future<List<Product>> loadProducts() => _loadProducts(_productsKey);
 
   /// ذخیره شمارنده‌های اسکن
   Future<void> saveScanStates(Map<String, int> scanCounts) async {
@@ -84,7 +121,7 @@ class StorageService {
     await prefs.remove(_scanStatesKey);
   }
 
-  /// حذف کامل داده‌ها (ریست کامل + حذف فایل اکسل)
+  /// حذف کامل داده‌ها (لیست کالاها، شمارنده‌ها و نام فایل)؛ بایگانی دست نمی‌خورد
   Future<void> clearAll() async {
     final prefs = await _getPrefs();
     await prefs.remove(_productsKey);
@@ -92,51 +129,23 @@ class StorageService {
     await prefs.remove(_excelFileNameKey);
   }
 
-  /// ذخیره‌ی کامل لیست بایگانی (فایل‌های قبلی + نتیجه‌ی اسکن‌هایشان)
-  Future<void> saveArchive(List<ArchivedSession> sessions) async {
-    final prefs = await _getPrefs();
-    final jsonList = sessions.map((s) => s.toJson()).toList();
-    await prefs.setString(_archiveKey, jsonEncode(jsonList));
-  }
+  Future<void> saveArchive(List<ArchivedSession> sessions) =>
+      _saveArchive(_archiveKey, sessions);
 
-  /// بارگذاری لیست بایگانی
-  Future<List<ArchivedSession>> loadArchive() async {
-    final prefs = await _getPrefs();
-    final str = prefs.getString(_archiveKey);
-    if (str == null) return [];
-    try {
-      final list = jsonDecode(str) as List;
-      return list
-          .map((e) => ArchivedSession.fromJson(e as Map<String, dynamic>))
-          .toList();
-    } catch (_) {
-      return [];
-    }
-  }
+  Future<List<ArchivedSession>> loadArchive() => _loadArchive(_archiveKey);
 
   // ---------------- شارژ سالن ----------------
 
-  /// ذخیره‌ی لیست کالاهای صفحه‌ی شارژ سالن (فقط کد و نام محصول کاربرد دارد)
-  Future<void> saveHallProducts(List<Product> products, {String? fileName}) async {
-    final prefs = await _getPrefs();
-    final jsonList = products.map((p) => p.toJson()).toList();
-    await prefs.setString(_hallProductsKey, jsonEncode(jsonList));
+  Future<void> saveHallProducts(List<Product> products,
+      {String? fileName}) async {
+    await _saveProducts(_hallProductsKey, products);
     if (fileName != null) {
+      final prefs = await _getPrefs();
       await prefs.setString(_hallFileNameKey, fileName);
     }
   }
 
-  Future<List<Product>> loadHallProducts() async {
-    final prefs = await _getPrefs();
-    final str = prefs.getString(_hallProductsKey);
-    if (str == null) return [];
-    try {
-      final list = jsonDecode(str) as List;
-      return list.map((e) => Product.fromJson(e as Map<String, dynamic>)).toList();
-    } catch (_) {
-      return [];
-    }
-  }
+  Future<List<Product>> loadHallProducts() => _loadProducts(_hallProductsKey);
 
   /// ذخیره‌ی کدهای تاییدشده (اسکن‌شده) در شارژ سالن
   Future<void> saveHallConfirmed(Set<String> codes) async {
@@ -155,11 +164,39 @@ class StorageService {
     return prefs.getString(_hallFileNameKey);
   }
 
-  /// حذف کامل داده‌های شارژ سالن
+  /// حذف کامل داده‌های شارژ سالن؛ بایگانی دست نمی‌خورد
   Future<void> clearHall() async {
     final prefs = await _getPrefs();
     await prefs.remove(_hallProductsKey);
     await prefs.remove(_hallConfirmedKey);
     await prefs.remove(_hallFileNameKey);
+  }
+
+  Future<void> saveHallArchive(List<ArchivedSession> sessions) =>
+      _saveArchive(_hallArchiveKey, sessions);
+
+  Future<List<ArchivedSession>> loadHallArchive() =>
+      _loadArchive(_hallArchiveKey);
+
+  // ---------------- تنظیمات ----------------
+
+  Future<bool> loadSoundEnabled() async {
+    final prefs = await _getPrefs();
+    return prefs.getBool(_soundKey) ?? true;
+  }
+
+  Future<bool> loadVibrationEnabled() async {
+    final prefs = await _getPrefs();
+    return prefs.getBool(_vibrationKey) ?? true;
+  }
+
+  Future<void> saveSoundEnabled(bool value) async {
+    final prefs = await _getPrefs();
+    await prefs.setBool(_soundKey, value);
+  }
+
+  Future<void> saveVibrationEnabled(bool value) async {
+    final prefs = await _getPrefs();
+    await prefs.setBool(_vibrationKey, value);
   }
 }

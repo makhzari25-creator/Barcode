@@ -3,12 +3,14 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 import 'services/app_state.dart';
 import 'services/hall_charge_state.dart';
+import 'services/settings_state.dart';
+import 'screens/settings_screen.dart';
 import 'screens/home_screen.dart';
 import 'screens/charge_hall_screen.dart';
 import 'screens/check_charge_screen.dart';
 import 'screens/splash_screen.dart';
 import 'screens/archive_screen.dart';
-import 'theme/app_colors.dart';
+import 'theme/app_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -17,6 +19,7 @@ void main() {
       providers: [
         ChangeNotifierProvider(create: (_) => AppState()),
         ChangeNotifierProvider(create: (_) => HallChargeState()),
+        ChangeNotifierProvider(create: (_) => SettingsState()),
       ],
       child: const MyApp(),
     ),
@@ -44,80 +47,8 @@ class MyApp extends StatelessWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
 
-      // تم برنامه
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        scaffoldBackgroundColor: AppColors.darkGray,
-
-        // فونت فارسی Vazirmatn
-        fontFamily: 'Vazirmatn',
-        textTheme: const TextTheme(
-          displayLarge: TextStyle(
-            fontFamily: 'Vazirmatn',
-            fontWeight: FontWeight.w900,
-          ),
-          headlineLarge: TextStyle(
-            fontFamily: 'Vazirmatn',
-            fontWeight: FontWeight.w700,
-          ),
-          titleLarge: TextStyle(
-            fontFamily: 'Vazirmatn',
-            fontWeight: FontWeight.w700,
-          ),
-          bodyLarge: TextStyle(
-            fontFamily: 'Vazirmatn',
-            fontWeight: FontWeight.w400,
-          ),
-          bodyMedium: TextStyle(
-            fontFamily: 'Vazirmatn',
-            fontWeight: FontWeight.w400,
-          ),
-          labelLarge: TextStyle(
-            fontFamily: 'Vazirmatn',
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-
-        // پالت رنگی برند: فیروزه‌ای روشن / آبی‌سبز تیره / مشکی
-        colorScheme: ColorScheme.fromSeed(
-          brightness: Brightness.dark,
-          seedColor: AppColors.cyan,
-          primary: AppColors.cyan,
-          secondary: AppColors.teal,
-          surface: AppColors.darkGray,
-        ),
-
-        // تنظیمات دکمه‌ها
-        elevatedButtonTheme: ElevatedButtonThemeData(
-          style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.teal,
-            foregroundColor: Colors.white,
-            textStyle: const TextStyle(
-              fontFamily: 'Vazirmatn',
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-            ),
-            minimumSize: const Size(double.infinity, 70),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-        ),
-
-        // تنظیمات appbar
-        appBarTheme: const AppBarTheme(
-          centerTitle: true,
-          backgroundColor: AppColors.black,
-          foregroundColor: Colors.white,
-          titleTextStyle: TextStyle(
-            fontFamily: 'Vazirmatn',
-            fontWeight: FontWeight.w700,
-            fontSize: 22,
-            color: Colors.white,
-          ),
-        ),
-      ),
+      // تم روشن برنامه
+      theme: AppTheme.light(),
 
       // مسیرهای برنامه
       home: const SplashScreen(nextScreen: HomeScreen()),
@@ -125,6 +56,7 @@ class MyApp extends StatelessWidget {
         '/charge_hall': (_) => const ChargeHallScreen(),
         '/check_charge': (_) => const CheckChargeScreen(),
         '/archive': (_) => const ArchiveScreen(),
+        '/settings': (_) => const SettingsScreen(),
       },
     );
   }
