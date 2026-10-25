@@ -120,6 +120,48 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// بارگذاری مستقیم لیست کالا (از OCR کاغذ یا منبع دیگر)
+  Future<bool> loadProductsList(List<Product> products,
+      {String? fileName}) async {
+    _loading = true;
+    _error = null;
+    notifyListeners();
+    try {
+      if (products.isEmpty) {
+        _error = 'لیست کالا خالی است.';
+        _loading = false;
+        notifyListeners();
+        return false;
+      }
+      if (_products.isNotEmpty && _scanCounts.values.any((c) => c > 0)) {
+        _archives.insert(
+          0,
+          ArchivedSession(
+            fileName: _excelFileName ?? 'فایل بدون نام',
+            archivedAt: DateTime.now(),
+            products: List<Product>.from(_products),
+            scanCounts: Map<String, int>.from(_scanCounts),
+          ),
+        );
+        await _storageService.saveArchive(_archives);
+      }
+      _products = products;
+      _scanCounts = {};
+      _excelFileName = fileName ?? 'لیست واردشده';
+      _index.rebuild(_products);
+      await _storageService.saveProducts(_products, fileName: _excelFileName);
+      await _storageService.saveScanStates(_scanCounts);
+      _loading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = 'خطا در بارگذاری لیست: $e';
+      _loading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
   /// حذف یک مورد از بایگانی
   Future<void> deleteArchive(int index) async {
     if (index < 0 || index >= _archives.length) return;
