@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 import '../utils/barcode_utils.dart';
 
-/// کارت فایل بارگذاری‌شده با نام فایل و تعداد کالا؛ با لمس آن فایل جایگزین می‌شود
+/// کارت فایل بارگذاری‌شده با نام فایل و تعداد کالا
 class FileCard extends StatelessWidget {
   final String fileName;
   final int productCount;
@@ -81,13 +81,14 @@ class _ExcelBadge extends StatelessWidget {
   }
 }
 
-/// حالت اولیه‌ی صفحه‌ها وقتی هنوز فایل اکسل انتخاب نشده است
+/// حالت اولیه وقتی هنوز فایل انتخاب نشده
 class EmptyFileState extends StatelessWidget {
   final String title;
   final String hint;
   final Color color;
   final bool showCountColumn;
   final VoidCallback onPick;
+  final VoidCallback? onPaper;
 
   const EmptyFileState({
     super.key,
@@ -96,6 +97,7 @@ class EmptyFileState extends StatelessWidget {
     required this.color,
     required this.showCountColumn,
     required this.onPick,
+    this.onPaper,
   });
 
   @override
@@ -140,7 +142,7 @@ class EmptyFileState extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('ستون‌های فایل xlsx',
+                  const Text('ستون‌های مهم',
                       style:
                           TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
                   const SizedBox(height: 8),
@@ -149,9 +151,10 @@ class EmptyFileState extends StatelessWidget {
                   if (showCountColumn)
                     const _ColumnRow(
                         name: 'تعداد', note: 'اختیاری، پیش‌فرض ۱'),
+                  const _ColumnRow(name: 'م.ف. انبار', note: 'محل فیزیکی انبار'),
+                  const _ColumnRow(name: 'رنگ / طرح / سایز', note: 'اختیاری'),
                   const _ColumnRow(
-                      name: 'عکس',
-                      note: 'اختیاری، مسیر فایل روی گوشی یا آدرس اینترنتی'),
+                      name: 'م.ف. سالن', note: '۳ رقم اول مثل ۰۳۱'),
                 ],
               ),
             ),
@@ -168,6 +171,22 @@ class EmptyFileState extends StatelessWidget {
                 label: const Text('انتخاب فایل اکسل'),
               ),
             ),
+            if (onPaper != null) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: onPaper,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: color,
+                    side: BorderSide(color: color),
+                    minimumSize: const Size(0, 56),
+                  ),
+                  icon: const Icon(Icons.document_scanner_rounded),
+                  label: const Text('ورود از عکس کاغذ'),
+                ),
+              ),
+            ],
           ],
         ),
       ),
