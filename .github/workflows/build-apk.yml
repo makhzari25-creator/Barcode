@@ -17,60 +17,40 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Restore excel_service if broken
         run: |
           set -e
-          if ! grep -q 'ZipDecoder' lib/services/excel_service.dart 2>/dev/null; then
-            echo 'excel_service.dart is broken — restoring from 9cacceda...'
-            git show 9caccedab52c42dac63ec0ce0af400d55bb47a00:lib/services/excel_service.dart > lib/services/excel_service.dart
-            # add extractHallLoc if missing
-            if ! grep -q 'extractHallLoc' lib/services/excel_service.dart; then
-              python3 << 'PY'
+          if grep -q ZipDecoder lib/services/excel_service.dart; then
+            echo "excel_service.dart OK"
+            exit 0
+          fi
+          echo "Restoring excel_service.dart from 9cacceda..."
+          git show 9caccedab52c42dac63ec0ce0af400d55bb47a00:lib/services/excel_service.dart > lib/services/excel_service.dart
+          if ! grep -q extractHallLoc lib/services/excel_service.dart; then
+            python3 -c "
           from pathlib import Path
           p = Path('lib/services/excel_service.dart')
           t = p.read_text()
-          helper = '''
-            static String extractHallLoc(String raw) {
-              final en = toEnDigits(raw);
-              final m = RegExp(r'\)?\s*([0-9]{3})').firstMatch(en);
-              if (m != null) return m.group(1)!;
-              final digits = en.replaceAll(RegExp(r'[^0-9]'), '');
-              if (digits.length >= 3) return digits.substring(0, 3);
-              return digits;
-            }
-          '''
-          # fix indentation of helper - use proper dart
-          helper = '''
-  static String extractHallLoc(String raw) {
-    final en = toEnDigits(raw);
-    final m = RegExp(r'\)?\\s*([0-9]{3})').firstMatch(en);
-    if (m != null) return m.group(1)!;
-    final digits = en.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digits.length >= 3) return digits.substring(0, 3);
-    return digits;
-  }
-
-'''
-          t = t.replace('  String _normalizeHeader(String s) {', helper + '  String _normalizeHeader(String s) {')
+          h = '''  static String extractHallLoc(String raw) {
+      final en = toEnDigits(raw);
+      final m = RegExp(r'\\)?\\s*([0-9]{3})').firstMatch(en);
+      if (m != null) return m.group(1)!;
+      final digits = en.replaceAll(RegExp(r'[^0-9]'), '');
+      if (digits.length >= 3) return digits.substring(0, 3);
+      return digits;
+    }\n\n'''
+          t = t.replace('  String _normalizeHeader(String s) {', h + '  String _normalizeHeader(String s) {')
           p.write_text(t)
           print('added extractHallLoc')
-          PY
-            fi
-            if ! grep -q 'ZipDecoder' lib/services/excel_service.dart; then
-              echo 'Restore failed'
-              exit 1
-            fi
-            git config user.name 'github-actions[bot]'
-            git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-            git add lib/services/excel_service.dart
-            git commit -m 'fix: restore complete excel_service.dart (CI auto-repair)' || true
-            git push origin HEAD:${{ github.head_ref || github.ref_name }} || true
-            echo 'Restored and pushed.'
-          else
-            echo 'excel_service.dart looks healthy.'
+          "
           fi
+          grep -q ZipDecoder lib/services/excel_service.dart
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/services/excel_service.dart
+          git commit -m 'fix: restore complete excel_service.dart (CI auto-repair)' || echo 'nothing to commit'
+          git push origin HEAD:${GITHUB_REF_NAME} || git push origin HEAD:fix/light-redesign || true
 
       - name: Setup Java
         uses: actions/setup-java@v4
