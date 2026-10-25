@@ -14,6 +14,7 @@ import '../widgets/scan_actions.dart';
 import '../widgets/scan_result_card.dart';
 import '../widgets/scanner_host.dart';
 import '../widgets/scanner_panel.dart';
+import 'paper_import_screen.dart';
 
 /// صفحه چک کردن شارژ
 /// 1. اگر فایل اکسل انتخاب نشده، اول از کاربر می‌خواهد فایل را انتخاب کند
@@ -81,6 +82,28 @@ class _CheckChargeScreenState extends State<CheckChargeScreen>
     } catch (e) {
       if (!mounted) return;
       showAppSnack(context, 'خطا در انتخاب فایل: $e', kind: SnackKind.error);
+    }
+  }
+
+
+  Future<void> _importPaper() async {
+    final ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => PaperImportScreen(mode: 0, accent: _accent),
+      ),
+    );
+    if (!mounted) return;
+    if (ok == true && context.read<AppState>().hasFile) {
+      setState(() {
+        _feedback = null;
+        _query = '';
+        scanPaused = false;
+      });
+      if (scannerController == null) {
+        initScanner();
+      } else {
+        await resumeScanner();
+      }
     }
   }
 
@@ -218,6 +241,7 @@ class _CheckChargeScreenState extends State<CheckChargeScreen>
           color: _accent,
           showCountColumn: true,
           onPick: _pickExcelFile,
+          onPaper: _importPaper,
         ),
       );
     }
@@ -253,12 +277,15 @@ class _CheckChargeScreenState extends State<CheckChargeScreen>
                   _confirmReset();
                 case 'replace':
                   _confirmReplace();
+                case 'paper':
+                  _importPaper();
               }
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'archive', child: Text('بایگانی')),
               PopupMenuItem(value: 'reset', child: Text('ریست شمارنده‌ها')),
               PopupMenuItem(value: 'replace', child: Text('جایگزینی فایل اکسل')),
+              PopupMenuItem(value: 'paper', child: Text('ورود از عکس کاغذ')),
             ],
           ),
         ],

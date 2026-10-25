@@ -14,6 +14,7 @@ import '../widgets/scan_actions.dart';
 import '../widgets/scan_result_card.dart';
 import '../widgets/scanner_host.dart';
 import '../widgets/scanner_panel.dart';
+import 'paper_import_screen.dart';
 
 /// صفحه‌ی «شارژ سالن»
 /// یک فایل اکسل با ستون‌های «کد محصول» و «عنوان محصول» بارگذاری می‌شود و
@@ -80,6 +81,28 @@ class _ChargeHallScreenState extends State<ChargeHallScreen>
     } catch (e) {
       if (!mounted) return;
       showAppSnack(context, 'خطا در انتخاب فایل: $e', kind: SnackKind.error);
+    }
+  }
+
+
+  Future<void> _importPaper() async {
+    final ok = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => PaperImportScreen(mode: 1, accent: _accent),
+      ),
+    );
+    if (!mounted) return;
+    if (ok == true && context.read<HallChargeState>().hasFile) {
+      setState(() {
+        _feedback = null;
+        _query = '';
+        scanPaused = false;
+      });
+      if (scannerController == null) {
+        initScanner();
+      } else {
+        await resumeScanner();
+      }
     }
   }
 
@@ -204,6 +227,7 @@ class _ChargeHallScreenState extends State<ChargeHallScreen>
           color: _accent,
           showCountColumn: false,
           onPick: _pickExcelFile,
+          onPaper: _importPaper,
         ),
       );
     }
@@ -225,12 +249,15 @@ class _ChargeHallScreenState extends State<ChargeHallScreen>
                   _confirmReset();
                 case 'replace':
                   _confirmReplace();
+                case 'paper':
+                  _importPaper();
               }
             },
             itemBuilder: (_) => const [
               PopupMenuItem(value: 'archive', child: Text('بایگانی')),
               PopupMenuItem(value: 'reset', child: Text('ریست تاییدها')),
               PopupMenuItem(value: 'replace', child: Text('جایگزینی فایل اکسل')),
+              PopupMenuItem(value: 'paper', child: Text('ورود از عکس کاغذ')),
             ],
           ),
         ],
