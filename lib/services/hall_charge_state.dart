@@ -6,20 +6,12 @@ import 'storage_service.dart';
 
 /// نتیجه‌ی اسکن در صفحه‌ی شارژ سالن
 enum HallScanResult {
-  /// کد محصول در فایل نیست
   notFound,
-
-  /// با موفقیت تایید شد (اولین بار)
   confirmed,
-
-  /// قبلاً همین کالا تایید شده بود
   alreadyConfirmed,
 }
 
 /// مدیریت وضعیت صفحه‌ی «شارژ سالن»
-/// برخلاف «چک کردن شارژ» که تعداد مورد نیاز را رصد می‌کند، این بخش فقط
-/// تطبیق «کد محصول» با «نام محصول» را از طریق اسکن انجام می‌دهد؛ یعنی هر
-/// کالا فقط یک‌بار به‌عنوان «تایید شده» علامت می‌خورد (بدون شمارش تعداد).
 class HallChargeState extends ChangeNotifier {
   HallChargeState({ExcelService? excelService, StorageService? storageService})
       : _excelService = excelService ?? ExcelService(),
@@ -51,7 +43,6 @@ class HallChargeState extends ChangeNotifier {
 
   bool isConfirmed(String code) => _confirmed.contains(code);
 
-  /// بارگذاری وضعیت ذخیره‌شده در ابتدای برنامه
   Future<void> initialize() async {
     _loading = true;
     notifyListeners();
@@ -69,9 +60,6 @@ class HallChargeState extends ChangeNotifier {
     }
   }
 
-  /// بارگذاری فایل اکسل جدید. فقط ستون‌های «کد محصول» و «عنوان محصول» (و عکس)
-  /// استفاده می‌شود؛ ستون تعداد نادیده گرفته می‌شود.
-  /// اگر فایل قبلی تاییدی داشت، پیش از جایگزینی بایگانی می‌شود.
   Future<bool> loadExcelFile(String filePath, {String? fileName}) async {
     _loading = true;
     _error = null;
@@ -116,9 +104,51 @@ class HallChargeState extends ChangeNotifier {
     }
   }
 
+  /// بارگذاری مستقیم لیست کالا (از OCR کاغذ)
+  Future<bool> loadProductsList(List<Product> products,
+      {String? fileName}) async {
+    _loading = true;
+    _error = null;
+    notifyListeners();
+    try {
+      if (products.isEmpty) {
+        _error = 'لیست کالا خالی است.';
+        _loading = false;
+        notifyListeners();
+        return false;
+      }
+      if (_products.isNotEmpty && _confirmed.isNotEmpty) {
+        _archives.insert(
+          0,
+          ArchivedSession(
+            fileName: _fileName ?? 'فایل بدون نام',
+            archivedAt: DateTime.now(),
+            products:
+                _products.map((p) => p.copyWith(requiredCount: 1)).toList(),
+            scanCounts: {for (final c in _confirmed) c: 1},
+          ),
+        );
+        await _storageService.saveHallArchive(_archives);
+      }
+      _products = products;
+      _confirmed = {};
+      _fileName = fileName ?? 'لیست واردشده';
+      _index.rebuild(_products);
+      await _storageService.saveHallProducts(_products, fileName: _fileName);
+      await _storageService.saveHallConfirmed(_confirmed);
+      _loading = false;
+      notifyListeners();
+      return true;
+    } catch (e) {
+      _error = 'خطا در بارگذاری لیست: $e';
+      _loading = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
   Product? findProduct(String code) => _index.find(code);
 
-  /// ثبت یک اسکن: فقط تطبیق کد با نام محصول را بررسی و علامت می‌زند
   Future<HallScanResult> recordScan(String code) async {
     final product = findProduct(code);
     if (product == null) {
@@ -133,14 +163,12 @@ class HallChargeState extends ChangeNotifier {
     return HallScanResult.confirmed;
   }
 
-  /// ریست تاییدها (لیست کالاها باقی می‌ماند)
   Future<void> resetConfirmations() async {
     _confirmed = {};
     await _storageService.saveHallConfirmed(_confirmed);
     notifyListeners();
   }
 
-  /// حذف لیست کالاها و تاییدهای فعلی (بایگانی باقی می‌ماند)
   Future<void> clearAll() async {
     _products = [];
     _confirmed = {};
