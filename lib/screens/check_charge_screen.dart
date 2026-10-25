@@ -243,7 +243,16 @@ class _CheckChargeScreenState extends State<CheckChargeScreen>
 
     if (!state.hasFile) {
       return Scaffold(
-        appBar: AppBar(title: const Text('چک کردن شارژ')),
+        appBar: AppBar(
+          title: const Text('چک کردن شارژ'),
+          actions: [
+            IconButton(
+              tooltip: 'ورود از عکس کاغذ',
+              onPressed: _importPaper,
+              icon: const Icon(Icons.document_scanner_rounded),
+            ),
+          ],
+        ),
         body: EmptyFileState(
           title: 'ابتدا فایل اکسل شارژ سالن را انتخاب کنید',
           hint: 'برای هر کالا تعداد لازم از ستون «تعداد» خوانده می‌شود.',

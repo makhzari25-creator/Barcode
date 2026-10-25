@@ -229,7 +229,16 @@ class _ChargeHallScreenState extends State<ChargeHallScreen>
 
     if (!state.hasFile) {
       return Scaffold(
-        appBar: AppBar(title: const Text('شارژ سالن')),
+        appBar: AppBar(
+          title: const Text('شارژ سالن'),
+          actions: [
+            IconButton(
+              tooltip: 'ورود از عکس کاغذ',
+              onPressed: _importPaper,
+              icon: const Icon(Icons.document_scanner_rounded),
+            ),
+          ],
+        ),
         body: EmptyFileState(
           title: 'فایل اکسل شارژ سالن را انتخاب کنید',
           hint: 'با اسکن هر کالا، تطابق کد و نام محصول تایید می‌شود.',
