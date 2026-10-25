@@ -1,5 +1,5 @@
 /// مدل کالای بارکد‌دار
-/// هر کالا شامل کد، عنوان و تعداد مورد نیاز اسکن است
+/// فیلدهای اصلی شارژ از سند انبار / اکسل
 class Product {
   final String code;
   final String title;
@@ -8,29 +8,79 @@ class Product {
   /// مسیر فایل روی گوشی یا آدرس اینترنتی عکس کالا (اختیاری)
   final String imageUrl;
 
+  /// محل فیزیکی انبار (م.ف. انبار) مثلاً 1-11-1-1
+  final String warehouseLoc;
+
+  /// رنگ کالا
+  final String color;
+
+  /// طرح
+  final String design;
+
+  /// سایز (XL, Free, ...)
+  final String size;
+
+  /// سه رقم اول محل فیزیکی سالن (م.ف.سالن) مثلاً 031 یا 032
+  final String hallLoc;
+
   Product({
     required this.code,
     required this.title,
     required this.requiredCount,
     this.imageUrl = '',
+    this.warehouseLoc = '',
+    this.color = '',
+    this.design = '',
+    this.size = '',
+    this.hallLoc = '',
   });
 
   factory Product.empty() => Product(code: '', title: '', requiredCount: 0);
 
-  Product copyWith({int? requiredCount}) => Product(
+  Product copyWith({
+    int? requiredCount,
+    String? title,
+    String? warehouseLoc,
+    String? color,
+    String? design,
+    String? size,
+    String? hallLoc,
+    String? imageUrl,
+  }) =>
+      Product(
         code: code,
-        title: title,
+        title: title ?? this.title,
         requiredCount: requiredCount ?? this.requiredCount,
-        imageUrl: imageUrl,
+        imageUrl: imageUrl ?? this.imageUrl,
+        warehouseLoc: warehouseLoc ?? this.warehouseLoc,
+        color: color ?? this.color,
+        design: design ?? this.design,
+        size: size ?? this.size,
+        hallLoc: hallLoc ?? this.hallLoc,
       );
 
   bool get isEmpty => code.isEmpty && title.isEmpty;
+
+  /// زیرعنوان خلاصه برای لیست: رنگ · سایز · م.ف.انبار
+  String get subtitleBits {
+    final parts = <String>[];
+    if (color.isNotEmpty) parts.add(color);
+    if (size.isNotEmpty) parts.add(size);
+    if (warehouseLoc.isNotEmpty) parts.add(warehouseLoc);
+    if (hallLoc.isNotEmpty) parts.add('سالن $hallLoc');
+    return parts.join(' · ');
+  }
 
   Map<String, dynamic> toJson() => {
         'code': code,
         'title': title,
         'requiredCount': requiredCount,
         'imageUrl': imageUrl,
+        'warehouseLoc': warehouseLoc,
+        'color': color,
+        'design': design,
+        'size': size,
+        'hallLoc': hallLoc,
       };
 
   factory Product.fromJson(Map<String, dynamic> json) => Product(
@@ -38,6 +88,11 @@ class Product {
         title: json['title'] as String? ?? '',
         requiredCount: (json['requiredCount'] as num?)?.toInt() ?? 0,
         imageUrl: json['imageUrl'] as String? ?? '',
+        warehouseLoc: json['warehouseLoc'] as String? ?? '',
+        color: json['color'] as String? ?? '',
+        design: json['design'] as String? ?? '',
+        size: json['size'] as String? ?? '',
+        hallLoc: json['hallLoc'] as String? ?? '',
       );
 }
 
@@ -60,8 +115,6 @@ class ScanState {
 }
 
 /// یک نسخه‌ی بایگانی‌شده از فایل اکسل و نتیجه‌ی اسکن‌های آن
-/// وقتی فایل جدیدی بارگذاری می‌شود، وضعیت فایل قبلی این‌جا نگه داشته می‌شود
-/// تا هیچ داده‌ای گم نشود، ولی از صفحه‌ی فعلی پاک شود.
 class ArchivedSession {
   final String fileName;
   final DateTime archivedAt;
