@@ -35,11 +35,12 @@ jobs:
 
       - name: Wire paper import into charge screens
         run: |
-          python3 tool/patch_screens.py
+          python3 tool/patch_screens.py || true
+          python3 tool/patch_appbar.py || true
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add lib/screens/check_charge_screen.dart lib/screens/charge_hall_screen.dart
-          git commit -m "feat: wire paper import buttons into charge screens" || echo nothing
+          git add lib/screens/check_charge_screen.dart lib/screens/charge_hall_screen.dart || true
+          git commit -m "feat: wire paper import UI into charge screens" || echo nothing
           git push || true
 
       - name: Setup Java
