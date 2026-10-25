@@ -42,6 +42,12 @@ dependencies:
   # مدیریت state
   provider: ^6.1.2
 
+  # OCR متن روی دستگاه برای خواندن سند کاغذی
+  google_mlkit_text_recognition: ^0.14.0
+
+  # گرفتن عکس از دوربین / گالری برای ورود کاغذی
+  image_picker: ^1.1.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
